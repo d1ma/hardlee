@@ -1,17 +1,23 @@
 #! /usr/bin/env python2.7
 from nltk.corpus import cmudict
-
+from strings import digits
 class Translator(object):
 	def _flatten_list(self, l):
 		l = reduce(lambda x,y: x.extend(y), l)
 		return l
 
+	# remove digits from pronounciation
+	def __clean_pronounce__(self, p):
+		return [pp.translate(None, digits) for pp in p]
+
 	def __init__(self):
 		self.d = cmudict.dict()
+
 		self.to_plaintext = {}
 		self.neighbors = NeighborGroups()
 		for key, pronounce_list in self.d.iteritems():
 			for pronounce in pronounce_list:
+				pronounce = clean_pronounce(pronounce)
 				p = tuple(pronounce)
 				plaintext_list = self.to_plaintext.get(p, [])
 				plaintext_list += [key]
@@ -60,8 +66,16 @@ class Translator(object):
 		iteration_results = []
 		for neighbor, distance in neighbors:
 			# case 1. try to make a word
-			plaintext = tuple(current_word[:] + [neighbor])
-			self.to_plaintext.
+			potential_full_word = tuple(current_word[:] + [neighbor])
+			full_word_plaintext = self.to_plaintext.get(potential_full_word, None)
+			if full_word_plaintext:
+				next_iteration_result = [full_word_plaintext]
+				recursive_children = self.__get_plaintext_rec(pronou, i+1, '')
+				for child in recursive_children:
+					iteration_results += [full_word_plaintext + child]
+				next_iteration_result += self.__get_plaintext_rec(pronou, i+1, '')
+				iteration_results += [next_iteration_result]
+
 			current_key = tuple(current_word)
 
 
