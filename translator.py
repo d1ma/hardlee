@@ -58,35 +58,130 @@ class Translator(object):
 		return spoken
 
 	# returns a sorted list by distance to the supplied pronounciation
-	def get_plaintext(self, pronounciation):
-		return sorted(list(set(self.__get_plaintext_rec(pronounciation))))
+	def get_plaintext(self, pronounciation, budget=None):
+		if budget:
+			raw_results = self.__get_plaintext_rec_budget(pronounciation, budget=budget)
+			if raw_results:
+				return sorted(list(set(raw_results)), key=lambda x: x[1])
+			else:
+				return None
+		else:
+			return sorted(list(set(self.__get_plaintext_rec(pronounciation))))
 		
 	def __make_plaintext_word(self, current_word_list):
 		return self.to_plaintext.get(tuple(current_word))
 
-	def attempt_finish(self, pron, debug=False):
-		SKIP_GROUP = self.get_neighbors(SKIP)
-		words = []
-		for skip_element in (SKIP_GROUP + [SKIP]):
-			if debug:
-				import pdb; pdb.set_trace()
-			pron_tuple = tuple(pron)	
-			if skip_element != '':
-				pron_tuple = tuple(pron + [skip_element])
-			
+	# if budget is given, returns a list, where each element is a tuple with a word and a *cost* for that word
+	# if budget is not given, then just returns a lit of possible words that can be formed with the pronounication
+	def attempt_finish(self, pron, budget=None):
+		if budget:
+			#import pdb; pdb.set_trace()
+			SKIP_GROUP = self.get_neighbors(SKIP, budget)
+			words_and_cost = []
+			for skip_element, cost in (SKIP_GROUP + [(SKIP, 0)]):
+				if cost > budget:
+					continue
 
-			possible_words = self.to_plaintext.get(pron_tuple, [])
-			for word in possible_words:
-				words += [word]
-			
-		return words
+				pron_tuple = tuple(pron)
+				if skip_element != '':
+					pron_tuple = tuple(pron + [skip_element])
+				possible_words = self.to_plaintext.get(pron_tuple, [])
+
+				words_and_cost += zip(possible_words, [cost] * len(possible_words))
+			return words_and_cost
+
+		else:
+			SKIP_GROUP = self.get_neighbors(SKIP)
+			words = []
+			for skip_element in (SKIP_GROUP + [SKIP]):
+				
+				pron_tuple = tuple(pron)	
+				if skip_element != '':
+					pron_tuple = tuple(pron + [skip_element])
+				
+
+				possible_words = self.to_plaintext.get(pron_tuple, [])
+				for word in possible_words:
+					words += [word]
+				
+			return words
 
 
 	# i is the 'next' syllable to consider
 	# current_word is the list of pronounciations that's being built up right now.
 	# current_prefix are the words built up so far
-	def get_neighbors(self, syll):
-		return [item[0] for item in self.neighbors.get_neighbors(syll)]
+	# if budget is set, then will return tuples with distance metrics
+	def get_neighbors(self, syll, budget=None):
+		if not budget:
+			return [item[0] for item in self.neighbors.get_neighbors(syll)]
+		else:
+			return self.neighbors.get_neighbors(syll, budget)
+
+
+
+	def __get_plaintext_rec_budget(self, pronou, current_prefix='', i=0, current_word=[], budget=-1):
+		if budget and budget<0:
+			return None
+
+
+		iteration_results = []
+		appended = []
+		debug = False
+
+		words_and_cost = self.attempt_finish(current_word,budget)
+	 	if len(words_and_cost) > 0:
+	 		if len(current_prefix) > 0:
+	 			appended = [(current_prefix + " " + word, budget-cost) for (word, cost) in words_and_cost]
+	 		else:
+	 			appended = [(word, budget-cost) for (word,cost) in words_and_cost]
+
+
+	 	# end of the utterance
+	 	if i >= len(pronou):	
+	 		if len(appended) > 0:
+	 			return appended
+	 		else:
+	 			return None
+
+	 	else:
+	 		# make recursive calls for each new prefix (if any)
+	 		for prefix, remaining_budget in appended:
+	 			attempted_recursion_result = self.__get_plaintext_rec_budget(pronou, prefix, i, [], remaining_budget)
+	 			if attempted_recursion_result:
+	 				iteration_results += attempted_recursion_result
+	 		
+	 		# also try not finishing the word and produce recursive call
+	 		syllable = self.__clean_one__(pronou[i])
+
+	 		syllable_group = self.get_neighbors(syllable, budget) + [(syllable,0)]
+	 
+	 		
+	 		for syllable, cost in syllable_group:
+	 			next_word = None
+	 			if syllable != SKIP:
+	 				next_word = current_word + [syllable]
+	 			else:
+	 				next_word = current_word
+
+ 				rec_result = self.__get_plaintext_rec_budget(pronou, current_prefix, i+1, next_word, budget-cost)
+	 			
+
+	 			if rec_result:
+	 				iteration_results += rec_result
+
+	 		if len(current_word) == 0:
+	 			# assume silent letters only at the beginning, ignore SKIP
+	 			silent_group = self.get_neighbors(SKIP, budget)
+	 			for silent_syl, cost in silent_group:
+	 				rec_result = self.__get_plaintext_rec_budget(pronou, current_prefix, i, current_word + [silent_syl], budget-cost)
+	 			if rec_result:
+	 				iteration_results += rec_result
+
+	 		if len(iteration_results) > 0:
+	 			return iteration_results
+	 		else:
+	 			return None
+
 
 
 	def __get_plaintext_rec(self, pronou, current_prefix='', i=0, current_word=[]):
@@ -156,73 +251,4 @@ class Translator(object):
 	 			return None
 
 
-	 # 	else:
-	 # 		# try finishing the word
-	 # 		words = self.finish_word(current_word)
-	 # 		if len(words) > 0:
-	 # 			appended = [current_prefix + " " + word for word in words]
-	 # 		# append the pronounciation and its cousins
-
-	 # 		# consider silent endings
-	 # 		possible_endings = self.neighbors[SKIP]
-	 # 		for ending in possible_endings:
-	 # 			possible_words = finish_word(self, current_word + [ending])
-	 # 			for word in possible_words:
-	 # 				results += [current_prefix + " " + word]
-	 # 		if len(results) > 0:
-	 # 			return results
-	 # 		else:
-	 # 			return None
-
-	 # 	else:
-	 # 		# attempt to add on the last syllable
-
-	 # 		current_syllable = pronou[i]
-
-
-	 # 	current_syllable = pronou[i]
-
-
-		# current_syllable = pronou[i]
-		# neighbors = self.neighbors.get_neighbors(current_syllable)
-		# neighbors += [(current_syllable,0)]
-
-		# iteration_results = []
-		# for neighbor, distance in neighbors:
-		# 	# case 1. try to make a word
-		# 	potential_full_word = tuple(current_word[:] + [neighbor])
-		# 	full_word_plaintext = self.to_plaintext.get(potential_full_word, None)
-		# 	if full_word_plaintext:
-		# 		next_iteration_result = [full_word_plaintext]
-		# 		recursive_children = self.__get_plaintext_rec(pronou, i+1, '')
-		# 		for child in recursive_children:
-		# 			iteration_results += [full_word_plaintext + child]
-
-				
-
-		# 	current_key = tuple(current_word)
-
-
-
-		# for each possible syllable interpretation
-		# case 1. we make a word and start a new one
-		# case 2. we make a continue building the word
-
-
-
-	# def get_plaintext(self, pronounciation, syllable = 0, readings = []):
-	# 	if syllable >= len(pronounciation):
-	# 		return readings
-
-	# 	new_syllable = pronounciation[syllable]
-	# 	if syllable == 0:
-	# 		potential_words = words
-	# 		readings += [[current_syllable]]
-	# 	for reading in readings:
-
-
-
-
-
-
-
+	

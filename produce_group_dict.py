@@ -1,7 +1,7 @@
 
 def main():
 	SKIP = ''
-	groups = [[SKIP,'HH'],['AA', 'AE', 'AH', 'AO', 'AY','EH'],['D','DH'],['IH','IY'],['V','W'],['Z','ZH'],['UH','UW']]
+	groups = [[SKIP,'HH'],['AA', 'AE', 'AH', 'AO', 'AY','EH', 'EY'],['D','DH'],['IH','IY'],['V','W'],['Z','ZH'],['UH','UW']]
 
 	d = {}
 
